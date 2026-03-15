@@ -345,6 +345,28 @@ body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-s
   </div>
 </div>
 
+<!-- MANUAL WORKOUT MODAL -->
+<div class="modal-overlay" id="manual-modal">
+  <div class="modal">
+    <div class="modal-title">Manual Workout<button class="modal-close" onclick="closeModal('manual-modal')">✕</button></div>
+    <div class="fg" style="margin-bottom:10px"><label>Workout Title</label><input type="text" id="manual-title" placeholder="e.g. Push Day"></div>
+    <div class="fg" style="margin-bottom:14px"><label>Notes</label><input type="text" id="manual-notes" placeholder="Optional coaching note..."></div>
+    <div class="card-title" style="margin-bottom:8px">Exercises</div>
+    <div id="manual-exercises"></div>
+    <div class="btn-row" style="margin-top:12px;margin-bottom:12px">
+      <button class="btn sm" onclick="addManualExFromLib()">📚 From Library</button>
+      <div style="display:flex;gap:6px;flex:1">
+        <input type="text" id="manual-custom-name" placeholder="Or type exercise name..." style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:7px 10px;border-radius:8px;outline:none">
+        <button class="btn sm" onclick="addCustomExercise()">+ Add</button>
+      </div>
+    </div>
+    <div id="manual-lib-section" style="display:none;max-height:200px;overflow-y:auto;margin-bottom:12px;border:1px solid var(--border);border-radius:8px">
+      <div id="manual-lib-list"></div>
+    </div>
+    <button class="btn" style="width:100%;justify-content:center" onclick="saveManualWorkout()">START WORKOUT</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -360,6 +382,7 @@ const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
 let session = null;
 let viewingPartner = false;
 let todayWorkout = null; // generated workout for today
+let selectedWorkoutDate = new Date(); // selected date for workout generation (default: today)
 let swapTargetIndex = null;
 let libFilterMuscle = 'All';
 let swapFilterMuscle = 'All';
@@ -503,6 +526,10 @@ function toast(msg, err=false) {
 }
 function todayName() { return DAYS_OF_WEEK[new Date().getDay()]; }
 function todayStr()  { return new Date().toISOString().split('T')[0]; }
+function selectedDayName() { return DAYS_OF_WEEK[selectedWorkoutDate.getDay()]; }
+function selectedDateStr() { return selectedWorkoutDate.toISOString().split('T')[0]; }
+function maxWorkoutDate() { const d = new Date(); d.setDate(d.getDate()+5); return d.toISOString().split('T')[0]; }
+function setWorkoutDate(dateStr) { selectedWorkoutDate = new Date(dateStr+'T12:00:00'); todayWorkout = null; renderToday(); }
 function fmtDate(s)  { return new Date(s+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'}); }
 function viewKey()   { return viewingPartner ? 'partner' : 'me'; }
 function viewName()  { return viewingPartner ? (session.partner?.name||'Partner') : session.name; }
@@ -580,19 +607,27 @@ function showPage(id) {
 // ═══════════════════════════════════════════
 async function renderToday() {
   const el = document.getElementById('today-content');
-  const day = todayName();
+  const day = selectedDayName();
   const sched = getSchedule(viewKey());
   const dayInfo = sched[day] || { gym: false, muscle: 'Rest', style: '' };
   const dayAbbr = day.substring(0,3).toUpperCase();
   const profile = getProfile(viewKey());
+  const displayDate = selectedWorkoutDate.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+  const isToday = selectedDateStr() === todayStr();
+
+  const datePicker = `<div style="margin-bottom:14px;display:flex;align-items:center;gap:10px">
+    <label style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim)">Workout Date</label>
+    <input type="date" value="${selectedDateStr()}" min="${todayStr()}" max="${maxWorkoutDate()}" onchange="setWorkoutDate(this.value)" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'DM Mono',monospace;font-size:13px;padding:6px 10px;border-radius:8px;outline:none">
+  </div>`;
 
   if (!dayInfo.gym) {
     el.innerHTML = `
       <div class="card">
+        ${datePicker}
         <div class="today-header">
           <div class="today-day">${dayAbbr}</div>
           <div class="today-info">
-            <div class="today-date">${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</div>
+            <div class="today-date">${displayDate}</div>
             <div class="today-muscle">${dayInfo.muscle}</div>
           </div>
         </div>
@@ -605,23 +640,25 @@ async function renderToday() {
     return;
   }
 
-  // Check if already logged today
+  // Check if already logged for selected date
   const history = getHistory(viewKey());
-  const alreadyLogged = history.find(h=>h.date===todayStr());
+  const alreadyLogged = history.find(h=>h.date===selectedDateStr());
 
   el.innerHTML = `
     <div class="card">
+      ${datePicker}
       <div class="today-header">
         <div class="today-day">${dayAbbr}</div>
         <div class="today-info">
-          <div class="today-date">${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</div>
+          <div class="today-date">${displayDate}</div>
           <div class="today-muscle">${dayInfo.muscle}</div>
           <div class="today-style">${dayInfo.style}</div>
         </div>
       </div>
-      ${alreadyLogged ? `<div style="background:rgba(200,245,66,0.08);border:1px solid rgba(200,245,66,0.2);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--accent-a)">✓ Workout already logged for today! You can still generate a new one or log again.</div>` : ''}
+      ${alreadyLogged ? `<div style="background:rgba(200,245,66,0.08);border:1px solid rgba(200,245,66,0.2);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--accent-a)">✓ Workout already logged for ${isToday?'today':displayDate}! You can still generate a new one or log again.</div>` : ''}
       <div class="btn-row">
         <button class="btn ai" id="gen-btn" onclick="generateWorkout()">✦ Generate Workout</button>
+        <button class="btn ghost" onclick="openManualWorkout()">✏️ Manual Workout</button>
         ${todayWorkout ? `<button class="btn ghost" onclick="saveWorkout()">💾 Save Workout</button>` : ''}
       </div>
     </div>
@@ -636,7 +673,7 @@ async function generateWorkout() {
   btn.disabled = true;
   btn.textContent = '✦ Generating...';
 
-  const day = todayName();
+  const day = selectedDayName();
   const sched = getSchedule(viewKey());
   const dayInfo = sched[day];
   const profile = getProfile(viewKey());
@@ -722,7 +759,7 @@ Generate the workout now.`;
     let text = data.content.map(c=>c.text||'').join('');
     text = text.replace(/```json|```/g,'').trim();
     const workout = JSON.parse(text);
-    workout.day = todayName();
+    workout.day = selectedDayName();
     workout.muscleGroup = dayInfo.muscle;
     workout.style = dayInfo.style;
     // Initialize logging state
@@ -895,7 +932,7 @@ function saveWorkout() {
 
   const history = getHistory(viewKey());
   history.push({
-    date: todayStr(),
+    date: selectedDateStr(),
     muscleGroup: todayWorkout.muscleGroup,
     style: todayWorkout.style,
     title: todayWorkout.title,
@@ -1128,6 +1165,109 @@ function saveProfile() {
   };
   saveLocal(profileKey(viewKey()), profile);
   toast('Training profile saved ✓');
+}
+
+// ═══════════════════════════════════════════
+//  MANUAL WORKOUT
+// ═══════════════════════════════════════════
+let manualExercises = [];
+
+function openManualWorkout() {
+  manualExercises = [];
+  const day = selectedDayName();
+  const sched = getSchedule(viewKey());
+  const dayInfo = sched[day] || { muscle: 'Custom', style: '' };
+  document.getElementById('manual-title').value = dayInfo.muscle + ' - Custom Workout';
+  document.getElementById('manual-notes').value = '';
+  renderManualExercises();
+  openModal('manual-modal');
+}
+
+function renderManualExercises() {
+  const el = document.getElementById('manual-exercises');
+  if (!manualExercises.length) {
+    el.innerHTML = '<div class="empty" style="padding:20px"><p style="color:var(--text-dim);font-size:13px">No exercises added yet. Add from the library or type your own.</p></div>';
+    return;
+  }
+  el.innerHTML = manualExercises.map((ex, i) => `
+    <div class="exercise-block" style="margin-bottom:8px">
+      <div class="ex-header">
+        <div>
+          <div class="ex-name">${ex.name}</div>
+          <div class="ex-muscle">${ex.muscle || ''}</div>
+        </div>
+        <button class="btn danger" style="font-size:11px;padding:4px 8px" onclick="removeManualEx(${i})">✕</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <div class="fg" style="flex:1"><label>Sets</label><input type="number" value="${ex.sets}" min="1" max="10" onchange="manualExercises[${i}].sets=parseInt(this.value)" style="background:var(--surface3);border:1px solid var(--border);color:var(--text);font-family:'DM Mono',monospace;font-size:14px;padding:6px;border-radius:6px;text-align:center;width:100%"></div>
+        <div class="fg" style="flex:1"><label>Reps</label><input type="text" value="${ex.reps}" onchange="manualExercises[${i}].reps=this.value" style="background:var(--surface3);border:1px solid var(--border);color:var(--text);font-family:'DM Mono',monospace;font-size:14px;padding:6px;border-radius:6px;text-align:center;width:100%"></div>
+        <div class="fg" style="flex:1"><label>Weight</label><input type="text" value="${ex.weight||''}" placeholder="lbs" onchange="manualExercises[${i}].weight=this.value" style="background:var(--surface3);border:1px solid var(--border);color:var(--text);font-family:'DM Mono',monospace;font-size:14px;padding:6px;border-radius:6px;text-align:center;width:100%"></div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function removeManualEx(i) {
+  manualExercises.splice(i, 1);
+  renderManualExercises();
+}
+
+function addManualExFromLib() {
+  const lib = getLibrary();
+  const html = lib.map(ex => `
+    <div class="lib-item" onclick="pickLibExercise('${ex.name.replace(/'/g,"\\'")}','${ex.muscle}')" style="cursor:pointer">
+      <div><div class="lib-item-name">${ex.name}</div><div class="lib-item-meta">${ex.muscle} — ${ex.equip||''}</div></div>
+      <div class="lib-item-add">+</div>
+    </div>
+  `).join('');
+  document.getElementById('manual-lib-list').innerHTML = html;
+  document.getElementById('manual-lib-section').style.display = 'block';
+}
+
+function pickLibExercise(name, muscle) {
+  manualExercises.push({ name, muscle, sets: 3, reps: '10', weight: '' });
+  renderManualExercises();
+  document.getElementById('manual-lib-section').style.display = 'none';
+}
+
+function addCustomExercise() {
+  const name = document.getElementById('manual-custom-name').value.trim();
+  if (!name) { toast('Enter an exercise name', true); return; }
+  manualExercises.push({ name, muscle: '', sets: 3, reps: '10', weight: '' });
+  document.getElementById('manual-custom-name').value = '';
+  renderManualExercises();
+}
+
+function saveManualWorkout() {
+  if (!manualExercises.length) { toast('Add at least one exercise', true); return; }
+  const title = document.getElementById('manual-title').value || 'Custom Workout';
+  const notes = document.getElementById('manual-notes').value || '';
+  const day = selectedDayName();
+  const sched = getSchedule(viewKey());
+  const dayInfo = sched[day] || { muscle: 'Custom', style: '' };
+
+  todayWorkout = {
+    title,
+    notes,
+    day,
+    muscleGroup: dayInfo.muscle,
+    style: dayInfo.style,
+    exercises: manualExercises.map((ex, i) => ({
+      ...ex,
+      id: i,
+      weight_suggestion: ex.weight || '',
+      superset_with: null,
+      loggedSets: Array(ex.sets).fill(null).map(() => ({ reps: ex.reps, weight: ex.weight || '', done: false }))
+    }))
+  };
+  closeModal('manual-modal');
+  renderToday();
+  renderWorkoutDisplay();
+  document.querySelector('.btn-row').innerHTML = `
+    <button class="btn ai" id="gen-btn" onclick="generateWorkout()">✦ Regenerate</button>
+    <button class="btn ghost" onclick="openManualWorkout()">✏️ Manual</button>
+    <button class="btn ghost" onclick="saveWorkout()">💾 Save Workout</button>`;
+  toast('Manual workout loaded! Log your sets and save.');
 }
 
 // ═══════════════════════════════════════════

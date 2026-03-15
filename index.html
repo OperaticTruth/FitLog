@@ -84,7 +84,7 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;dis
 .mini-chart{height:80px;position:relative;margin-top:10px}
 .chart-line{width:100%;height:100%}
 /* MEASUREMENTS */
-.meas-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.meas-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;overflow-x:hidden;max-width:100%}
 .meas-box{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
 .meas-label{font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--text-faint);text-transform:uppercase;margin-bottom:4px}
 .meas-val{font-family:'DM Mono',monospace;font-size:20px;color:var(--text)}
@@ -92,6 +92,7 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;dis
 .meas-change{font-size:10px;margin-top:2px}
 .meas-change.pos{color:var(--red)}
 .meas-change.neg{color:var(--green)}
+.meas-change.neutral{color:var(--text-dim)}
 /* WORKOUTS - CAROUSEL */
 .day-carousel-wrap{padding:10px 16px 0}
 .week-strip{display:flex;gap:4px;margin-bottom:10px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
@@ -205,7 +206,7 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;dis
 /* MODAL */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.76);backdrop-filter:blur(5px);z-index:500;display:none;align-items:flex-end;justify-content:center;padding:12px}
 .modal-overlay.open{display:flex}
-.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:540px;max-height:82vh;overflow-y:auto;padding:18px}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:540px;max-height:82vh;overflow-y:auto;overflow-x:hidden;padding:18px;box-sizing:border-box}
 .modal-title{font-family:\x27Bebas Neue\x27,sans-serif;font-size:17px;letter-spacing:2px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}
 .modal-close{background:none;border:none;color:var(--text-dim);font-size:20px;cursor:pointer}
 .lib-search{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:8px 11px;border-radius:9px;outline:none;margin-bottom:9px}
@@ -339,7 +340,7 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;dis
             <label class="photo-upload-btn" for="photo-file-input">
               <span class="pu-icon">&#128247;</span>Take / Choose Photo
             </label>
-            <input type="file" id="photo-file-input" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoSelect(this)">
+            <input type="file" id="photo-file-input" accept="image/*" style="display:none" onchange="handlePhotoSelect(this)">
           </div>
           <div class="upload-loading" id="upload-loading">&#8987; Saving photo...</div>
           <div id="photo-note-bar" style="display:none;margin-bottom:10px">
@@ -700,8 +701,9 @@ async function logWeight(){
 //  MEASUREMENTS
 // ============================================================
 var MEAS_FIELDS = [
-  {key:'stomach',label:'Stomach'},{key:'waist',label:'Waist'},{key:'chest',label:'Chest'},
-  {key:'hips',label:'Hips'},{key:'glutes',label:'Glutes'},
+  {key:'chest',label:'Chest'},{key:'stomach',label:'Stomach'},
+  {key:'waist',label:'Waist'},{key:'hips',label:'Hips'},
+  {key:'glutes',label:'Glutes'},{key:'_spacer',label:''},
   {key:'upper_arm_l',label:'Arm L'},{key:'upper_arm_r',label:'Arm R'},
   {key:'flexed_l',label:'Flexed L'},{key:'flexed_r',label:'Flexed R'},
   {key:'thigh_l',label:'Thigh L'},{key:'thigh_r',label:'Thigh R'}
@@ -713,15 +715,16 @@ function renderMeasurements(){
   var prev=measureData[measureData.length-2];
   if(!latest){el.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="ei">&#128207;</div><p>No measurements yet</p></div>';return;}
   el.innerHTML=MEAS_FIELDS.map(function(f){
+    if(f.key==='_spacer')return '<div></div>';
     var v=latest[f.key]; if(v==null)return '';
-    var chg=''; if(prev&&prev[f.key]!=null){var d=(v-prev[f.key]).toFixed(1);chg='<div class="meas-change '+(d<0?'neg':'pos')+'">'+( d<0?d:'+'+d)+' in</div>';}
+    var chg=''; if(prev&&prev[f.key]!=null){var d=(v-prev[f.key]).toFixed(1);var cls=d<0?'neg':d>0?'pos':'neutral';chg='<div class="meas-change '+cls+'">'+(d<0?d:d>0?'+'+d:'0')+' in</div>';}
     return '<div class="meas-box"><div class="meas-label">'+f.label+'</div><div class="meas-val">'+v+'<span class="meas-unit">in</span></div>'+chg+'</div>';
   }).join('');
 }
 
 function openMeasModal(){
   var el=document.getElementById('meas-fields');
-  el.innerHTML=MEAS_FIELDS.map(function(f){
+  el.innerHTML=MEAS_FIELDS.filter(function(f){return f.key!=='_spacer';}).map(function(f){
     return '<div class="auth-field"><label>'+f.label+'</label><input class="auth-input inp-sm" id="mf-'+f.key+'" type="number" step="0.1" placeholder="inches"></div>';
   }).join('');
   openModal('meas-modal');
@@ -731,7 +734,7 @@ async function saveMeasurements(){
   var d=document.getElementById('meas-date').value;
   if(!d){toast('Select a date',true);return;}
   var body={entry_date:d};
-  MEAS_FIELDS.forEach(function(f){var v=parseFloat(document.getElementById('mf-'+f.key).value);if(!isNaN(v))body[f.key]=v;});
+  MEAS_FIELDS.forEach(function(f){if(f.key==='_spacer')return;var v=parseFloat(document.getElementById('mf-'+f.key).value);if(!isNaN(v))body[f.key]=v;});
   try{
     var r=await api('POST','/measurements',body);
     var idx=measureData.findIndex(function(e){return e.entry_date===d;});
