@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS measurements (
     id SERIAL PRIMARY KEY,
     user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     entry_date DATE NOT NULL,
-    stomach REAL, waist REAL, chest REAL, hips REAL, glutes REAL,
+    stomach REAL, waist REAL, chest REAL, bust REAL, hips REAL, glutes REAL,
     upper_arm_l REAL, upper_arm_r REAL, flexed_l REAL, flexed_r REAL,
     thigh_l REAL, thigh_r REAL,
     UNIQUE(user_id, entry_date)
@@ -149,6 +149,8 @@ def startup():
     with psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor) as conn:
         with conn.cursor() as cur:
             cur.execute(SCHEMA)
+            # Add bust column if missing (migration for existing DBs)
+            cur.execute("ALTER TABLE measurements ADD COLUMN IF NOT EXISTS bust REAL")
         conn.commit()
 
 # ── AUTH HELPERS ────────────────────────────────────────────────────────────
@@ -198,7 +200,8 @@ class WeightEntry(BaseModel):
 class MeasurementEntry(BaseModel):
     entry_date: date
     stomach: Optional[float]=None; waist: Optional[float]=None
-    chest: Optional[float]=None;   hips: Optional[float]=None
+    chest: Optional[float]=None;   bust: Optional[float]=None
+    hips: Optional[float]=None
     glutes: Optional[float]=None;  upper_arm_l: Optional[float]=None
     upper_arm_r: Optional[float]=None; flexed_l: Optional[float]=None
     flexed_r: Optional[float]=None; thigh_l: Optional[float]=None
@@ -302,7 +305,7 @@ def get_weight(days: int=90, user=Depends(get_current_user), conn=Depends(get_db
 
 # ── MEASUREMENTS ──────────────────────────────────────────────────────────────
 
-MFIELDS = ["stomach","waist","chest","hips","glutes","upper_arm_l","upper_arm_r","flexed_l","flexed_r","thigh_l","thigh_r"]
+MFIELDS = ["stomach","waist","chest","bust","hips","glutes","upper_arm_l","upper_arm_r","flexed_l","flexed_r","thigh_l","thigh_r"]
 
 @app.post("/measurements")
 def log_measurement(e: MeasurementEntry, user=Depends(get_current_user), conn=Depends(get_db)):
