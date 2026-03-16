@@ -287,7 +287,7 @@ function renderMeasurements(){
   var prev=measureData[measureData.length-2];
   if(!latest){el.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="ei">&#128207;</div><p>No measurements yet</p></div>';return;}
   el.innerHTML=MEAS_FIELDS.map(function(f){
-    var v=latest[f.key]; if(v==null)return '';
+    var v=latest[f.key]; if(v==null)return '<div></div>';
     var chg=''; if(prev&&prev[f.key]!=null){var d=(v-prev[f.key]).toFixed(2);var cls='neutral';if(d>0){cls=f.wantUp?'good':'bad';}else if(d<0){cls=f.wantDown?'good':'bad';}chg='<div class="meas-change '+cls+'">'+(d<0?d:d>0?'+'+d:'0')+' in</div>';}
     return '<div class="meas-box"><div class="meas-label">'+f.label+'</div><div class="meas-val">'+v+'<span class="meas-unit">in</span></div>'+chg+'</div>';
   }).join('');
@@ -299,19 +299,40 @@ function openMeasModal(){
     return '<div class="auth-field"><label>'+f.label+'</label><input class="auth-input inp-sm" id="mf-'+f.key+'" type="number" step="0.01" placeholder="inches"></div>';
   }).join('');
   openModal('meas-modal');
+  // Pre-fill with existing values for selected date
+  setTimeout(function(){
+    var d=document.getElementById('meas-date').value;
+    var existing=measureData.find(function(e){return e.entry_date===d;});
+    if(existing){MEAS_FIELDS.forEach(function(f){if(existing[f.key]!=null)document.getElementById('mf-'+f.key).value=existing[f.key];});}
+  },50);
 }
 
 async function saveMeasurements(){
   var d=document.getElementById('meas-date').value;
   if(!d){toast('Select a date',true);return;}
+  // Save snapshot for undo
+  window._lastMeasureState=JSON.parse(JSON.stringify(measureData));
+  // Pre-fill with existing data for this date so we don't wipe fields
   var body={entry_date:d};
+  var existing=measureData.find(function(e){return e.entry_date===d;});
+  if(existing){MEAS_FIELDS.forEach(function(f){if(existing[f.key]!=null)body[f.key]=existing[f.key];});}
+  // Override with any new values the user entered
   MEAS_FIELDS.forEach(function(f){var v=parseFloat(document.getElementById('mf-'+f.key).value);if(!isNaN(v))body[f.key]=v;});
   try{
     var r=await api('POST','/measurements',body);
     var idx=measureData.findIndex(function(e){return e.entry_date===d;});
     if(idx>=0)measureData[idx]=r; else{measureData.push(r);measureData.sort(function(a,b){return a.entry_date.localeCompare(b.entry_date);});}
     closeModal('meas-modal'); toast('Measurements saved!'); renderMeasurements();
+    // Show undo bar
+    var old=document.getElementById('undo-bar');if(old)old.remove();
+    var u=document.createElement('div');u.id='undo-bar';
+    u.style.cssText='position:fixed;bottom:60px;left:50%;transform:translateX(-50%);background:#1a1a24;border:1px solid #2a2a3a;border-radius:10px;padding:10px 16px;display:flex;align-items:center;gap:10px;z-index:999;font-size:13px;color:#e8e8f0';
+    u.innerHTML='Measurements saved <button onclick="undoMeasurements()" style="background:#c8f542;color:#000;border:none;padding:4px 12px;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">UNDO</button>';
+    document.body.appendChild(u);setTimeout(function(){var el=document.getElementById('undo-bar');if(el)el.remove();},8000);
   }catch(e){toast(e.message,true);}
+}
+function undoMeasurements(){
+  if(window._lastMeasureState){measureData=window._lastMeasureState;renderMeasurements();var el=document.getElementById('undo-bar');if(el)el.remove();toast('Measurements restored');}
 }
 
 // ============================================================
