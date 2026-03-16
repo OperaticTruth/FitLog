@@ -264,6 +264,10 @@ async function renderToday() {
           <h2>${dayInfo.muscle.toUpperCase()}</h2>
           <p>${dayInfo.muscle.includes('Rest') ? 'Recovery is part of the program. See you tomorrow.' : 'Get after it!'}</p>
         </div>
+        <div class="btn-row" style="margin-top:14px">
+          <button class="btn ai" id="gen-btn" onclick="generateWorkout()" style="opacity:0.5" disabled title="Change the date above to a gym day to generate">✦ Generate Workout</button>
+          <button class="btn ghost" onclick="openManualWorkout()">✏️ Manual Workout</button>
+        </div>
       </div>`;
     return;
   }
